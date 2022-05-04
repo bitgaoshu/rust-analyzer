@@ -433,10 +433,16 @@ impl<'a> InferenceContext<'a> {
         for ty in result.type_of_pat.values_mut() {
             *ty = table.resolve_completely(ty.clone());
         }
-        for mismatch in result.type_mismatches.values_mut() {
-            mismatch.expected = table.resolve_completely(mismatch.expected.clone());
-            mismatch.actual = table.resolve_completely(mismatch.actual.clone());
+        let mut n_type_mismatches = FxHashMap::default();
+        for (expr, TypeMismatch { expected, actual }) in result.type_mismatches.into_iter() {
+            let n_expected = table.resolve_completely(expected.clone());
+            let n_actual = table.resolve_completely(actual.clone());
+            if table.coerce(&n_actual, &n_expected).is_err() {
+                n_type_mismatches
+                    .insert(expr, TypeMismatch { expected: n_expected, actual: n_actual });
+            }
         }
+        result.type_mismatches = n_type_mismatches;
         for (_, subst) in result.method_resolutions.values_mut() {
             *subst = table.resolve_completely(subst.clone());
         }

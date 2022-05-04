@@ -656,6 +656,20 @@ fn test() {
 }
 
 #[test]
+fn coerce_inference_callback() {
+    check_no_mismatches(
+        r#"
+//- minicore: coerce_unsized
+fn print_me_later(x:&dyn core::fmt::Debug) {
+}
+
+fn main() {
+    print_me_later(&22);
+}
+        "#,
+    );
+}
+#[test]
 fn coerce_type_var() {
     check_types(
         r#"
