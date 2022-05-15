@@ -558,7 +558,7 @@ impl<'a> InferenceContext<'a> {
                 }
                 .intern(Interner)
             }
-            &Expr::Box { expr } => self.infer_expr_box(expr),
+            &Expr::Box { expr } => self.infer_expr_box(expr, expected),
             Expr::UnaryOp { expr, op } => {
                 let inner_ty = self.infer_expr_inner(*expr, &Expectation::none());
                 let inner_ty = self.resolve_ty_shallow(&inner_ty);
@@ -786,16 +786,27 @@ impl<'a> InferenceContext<'a> {
         ty
     }
 
-    fn infer_expr_box(&mut self, inner_expr: ExprId) -> chalk_ir::Ty<Interner> {
-        let inner_ty = self.infer_expr_inner(inner_expr, &Expectation::none());
-        if let Some(box_) = self.resolve_boxed_box() {
-            TyBuilder::adt(self.db, box_)
-                .push(inner_ty)
-                .fill_with_defaults(self.db, || self.table.new_type_var())
-                .build()
-        } else {
-            self.err_ty()
-        }
+    fn infer_expr_box(&mut self, inner_expr: ExprId, expected: &Expectation) -> Ty {
+        self.resolve_boxed_box()
+            .map(|box_id| {
+                let table = &mut self.table;
+                let inner_exp = expected
+                    .to_option(table)
+                    .as_ref()
+                    .map(|e| e.as_adt())
+                    .flatten()
+                    .filter(|(e_adt, _)| e_adt == &box_id)
+                    .map(|(_, subts)| subts.at(Interner, 0))
+                    .map(|g| &Expectation::rvalue_hint(table, g.assert_ty_ref(Interner).clone()))
+                    .unwrap_or(&Expectation::None);
+
+                let inner_ty = self.infer_expr_inner(inner_expr, inner_exp);
+                TyBuilder::adt(self.db, box_id)
+                    .push(inner_ty)
+                    .fill_with_defaults(self.db, || self.table.new_type_var())
+                    .build()
+            })
+            .unwrap_or_else(|| self.err_ty())
     }
 
     fn infer_overloadable_binop(
